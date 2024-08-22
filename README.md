@@ -9,7 +9,7 @@ Source Asset Pricing (OSAP).
 
 There are 212 cross-sectional predictors.
 
-- **Downlaod predictor portfolio returns**: various portfolio construction
+- **Download predictor portfolio returns**: various portfolio construction
   methods: original paper methods, deciles, quintiles, equal-weighted,
   value-weighted, price filter, and so on ...
 - **Download firm characteristics**: 209 from OSAP + 3 from CRSP (Price, Size, STreversal)
@@ -55,7 +55,7 @@ pip install .
 Both Pandas and Polars dataframes are supported. You can choose the
 one that fits your workflow.
 
-### Import pacakge
+### Import package
 ```python
 import openassetpricing as oap
 
