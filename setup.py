@@ -1,3 +1,10 @@
+"""
+Inputs: None; this script relies on setuptools metadata defined inline.
+Outputs: Distributes the openassetpricing package with optional extras for examples.
+How to run: Execute `pip install .` for the core install. To include example dependencies, run
+"pip install '.[examples]'" (quote the extras when using shells like zsh).
+"""
+
 from setuptools import setup, find_packages
 
 setup(
@@ -16,4 +23,13 @@ setup(
         'pyarrow',
         'beautifulsoup4'
     ],
+    extras_require={
+        'examples': [
+            'matplotlib',
+            'numpy',
+            'scikit-learn',
+            'seaborn',
+            'statsmodels'
+        ]
+    },
 )
