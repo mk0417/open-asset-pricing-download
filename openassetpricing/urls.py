@@ -1,5 +1,9 @@
 # Data is from Chen and Zimmermann: https://www.openassetpricing.com/
 
+# Version 2.00: data release - 2025.10
+release202510_url = (
+    'https://drive.google.com/drive/folders/1qQDuTsnyvWfEJR6nPBQZ8xxlq6bkLG_y')
+
 # Version 1.41: data release - 2024.10
 release202410_url = (
     'https://drive.google.com/drive/folders/1SSoHGbwgyhRwUCzLE0YWvUlS0DjLCd4k')

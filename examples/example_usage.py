@@ -4,7 +4,7 @@ import openassetpricing as oap
 # List available release versions
 oap.list_release()
 
-# Initialize OpenAP
+# Initialize OpenAP with most recent release
 openap = oap.OpenAP()
 
 # ==========

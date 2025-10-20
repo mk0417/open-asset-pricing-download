@@ -51,6 +51,13 @@ Or, navigate to the package directory first, then run in the terminal
 pip install .
 ```
 
+- **Optional example dependencies**
+
+If you plan to run the example scripts and notebooks, install with extras:
+```bash
+pip install '.[examples]'
+```
+
 ## Usage
 Both Pandas and Polars dataframes are supported. You can choose the
 one that fits your workflow.
