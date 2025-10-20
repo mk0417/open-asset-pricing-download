@@ -1,0 +1,45 @@
+# Inputs: None; this project relies on setuptools metadata defined inline.
+# Outputs: Distributes the openassetpricing package with optional extras for examples.
+# How to run:
+#   Execute `pip install .` for the core install.
+#   To include example dependencies, run:
+#     pip install '.[examples]' (quote the extras when using shells like zsh).
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openassetpricing"
+version = "0.0.2"
+authors = [
+{ name = "Peng Li", email = "pl750@bath.ac.uk" },
+{ name = "Andrew Chen", email = "andrew.y.chen@frb.gov" },
+{ name = "Tom Zimmermann", email = "tom.zimmermann@uni-koeln.de" }
+]
+description = "Open asset pricing package with example dependencies"
+license = { text = "GPLv2" }
+readme = "README.md"
+requires-python = ">=3.8"
+
+dependencies = [
+"polars",
+"pandas",
+"requests",
+"tabulate",
+"wrds",
+"pyarrow",
+"beautifulsoup4"
+]
+
+[project.optional-dependencies]
+examples = [
+"matplotlib",
+"numpy",
+"scikit-learn",
+"seaborn",
+"statsmodels"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
