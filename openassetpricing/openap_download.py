@@ -1,5 +1,6 @@
 from . import urls
 from .gdrive_parse import _get_name_id_map, _get_readable_link
+from .hf_parse import _get_hf_name_id_map
 import polars as pl
 import pandas as pd
 import requests
@@ -12,23 +13,46 @@ import time
 
 
 def list_release():
-    df = pl.DataFrame(
-        {'release':
-         [re.findall(r'release(\d+)_url', i)[0]
-          for i in dir(urls) if i.startswith('release')]}
+    source_names = {'url': 'Google Drive', 'hf': 'Hugging Face'}
+    df = (
+        pl.DataFrame(
+            [re.findall(r'^release(\d+)_(url|hf)$', i)[0]
+             for i in dir(urls) if re.match(r'^release\d+_(url|hf)$', i)],
+            schema=['release', 'source'], orient='row')
+        .with_columns(
+            pl.col('source').replace_strict(source_names),
+            default=pl.when(pl.col('release')==str(urls.default_release))
+            .then(pl.lit('*')).otherwise(pl.lit('')))
+        .sort('release')
     )
     table = [i for i in df.iter_rows()]
-    headers = ['Release']
+    headers = ['Release', 'Source', 'Default']
     print(tabulate(table, headers, tablefmt='simple_outline'))
 
 class OpenAP:
-    def __init__(self, release_year=None):
+    def __init__(self, release_year=None, hf_revision=None):
+        # hf_revision overrides the Hugging Face branch set in urls.py,
+        # e.g. to try a new release before the package is updated
         if not release_year:
-            release_url = getattr(urls, dir(urls)[-1], None)
-        if release_year:
-            release_url = getattr(urls, f'release{release_year}_url', None)
+            release_year = urls.default_release
+        self.release_year = release_year
+        self.hf_revision = (
+            hf_revision or getattr(urls, f'release{release_year}_hf', None))
+        self.source = 'hf' if self.hf_revision else 'gdrive'
 
-        self.name_id_map, self.individual_signal_id_map = _get_name_id_map(release_url)
+        if self.source == 'hf':
+            self.name_id_map = _get_hf_name_id_map(
+                urls.hf_url_prefix, self.hf_revision)
+            self.individual_signal_id_map = None
+        else:
+            release_url = getattr(urls, f'release{release_year}_url', None)
+            if not release_url:
+                raise ValueError(
+                    f'Release {release_year} is not available. '
+                    'Run list_release() to see available releases.')
+            self.name_id_map, self.individual_signal_id_map = (
+                _get_name_id_map(release_url))
+
         self.signal_sign = (
             pl.read_csv(
                 self._get_url('signal_doc'), infer_schema_length=300,
@@ -38,9 +62,13 @@ class OpenAP:
         )
 
     def list_port(self):
+        if self.source == 'hf':
+            port_filter = pl.col('full_name').str.contains('Portfolios/')
+        else:
+            port_filter = pl.col('name').str.starts_with('Predictor')
         df = (
-            self.name_id_map.select('name', 'download_name')
-            .filter(pl.col('name').str.starts_with('Predictor'))
+            self.name_id_map.filter(port_filter)
+            .select('name', 'download_name')
         )
         table = [i for i in df.iter_rows()]
         headers = ['CZ portfolio file', 'Name for download']
@@ -49,7 +77,7 @@ class OpenAP:
     def _get_url(self, data_name):
         data_header = self.name_id_map.filter(pl.col('download_name')==data_name)
         file_with_confirm = ['firm_char', 'deciles_ew', 'deciles_vw']
-        if data_name in file_with_confirm:
+        if self.source == 'gdrive' and data_name in file_with_confirm:
             self.url = _get_readable_link(data_header[0, 'file_id'])
         else:
             self.url = data_header[0, 'file_id']
@@ -290,6 +318,72 @@ class OpenAP:
         df = df.sort('permno', 'yyyymm')
         return self._convert_to_backend(df, df_backend)
 
+    def _dl_port_hf(self, df_backend, predictor=None):
+        # Parquet is filtered before download, so only the requested
+        # predictors are fetched
+        lf = pl.scan_parquet(self.url)
+        if predictor:
+            if type(predictor) is not list:
+                raise ValueError('Predictor must be a list')
+            lf = lf.filter(pl.col('signalname').is_in(predictor))
+
+        df = lf.collect()
+        if predictor and df['signalname'].n_unique() != len(predictor):
+            print('One or more input predictors are not available.')
+
+        df = df.sort('signalname', 'port', 'date')
+        return self._convert_to_backend(df, df_backend)
+
+    def _dl_signal_hf(self, df_backend, predictor=None, signed=True,
+                      crsp3_join='left'):
+        # self.url is a wide parquet file: permno, yyyymm, one column per
+        # signal. Price, Size and STreversal are not in the file and come
+        # from CRSP (signed by default)
+        crsp3 = ['Price', 'Size', 'STreversal']
+        lf = pl.scan_parquet(self.url)
+
+        if not predictor:
+            df = lf.collect().join(
+                self._dl_signal_crsp3(), how='left', on=['permno', 'yyyymm'])
+            df = df.sort('permno', 'yyyymm')
+            return self._convert_to_backend(df, df_backend)
+
+        if type(predictor) is not list:
+            raise ValueError('Predictor must be a list')
+
+        available = set(lf.collect_schema().names()) | set(crsp3)
+        missing = [i for i in predictor if i not in available]
+        if missing:
+            raise ValueError(f'Predictors not available: {missing}')
+
+        ex_crsp3 = [i for i in predictor if i not in crsp3]
+        df = None
+        if ex_crsp3:
+            df = (
+                lf.select('permno', 'yyyymm', *ex_crsp3)
+                .filter(pl.any_horizontal(pl.col(ex_crsp3).is_not_null()))
+                .collect()
+            )
+
+        if set(crsp3) & set(predictor):
+            temp = self._dl_signal_crsp3()
+            if not signed:
+                temp = temp.with_columns(pl.col(crsp3).mul(-1))
+            if df is None:
+                df = temp
+            else:
+                df = df.join(
+                    temp, how=crsp3_join, on=['permno', 'yyyymm'],
+                    coalesce=True)
+
+        df = (
+            df.select('permno', 'yyyymm', *predictor)
+            .filter(pl.any_horizontal(pl.col(predictor).is_not_null()))
+            .with_columns(pl.col(predictor).cast(pl.Float64))
+            .sort('permno', 'yyyymm')
+        )
+        return self._convert_to_backend(df, df_backend)
+
     def _print_time(self, time_used):
         if time_used <= 60:
             print(f'\nData is downloaded: {time_used:.0f}s')
@@ -310,9 +404,11 @@ class OpenAP:
             self.url = self._get_url(data_name)
             if self.url:
                 start_time = time.time()
-                if data_name == 'op':
+                if self.source == 'hf':
+                    df = self._dl_port_hf(df_backend, predictor)
+                elif data_name == 'op':
                     df = self._dl_port_op(df_backend, predictor)
-                if data_name in port_alt_list:
+                elif data_name in port_alt_list:
                     df = self._dl_port_alt(df_backend, predictor)
 
                 end_time = time.time()
@@ -329,7 +425,10 @@ class OpenAP:
             self.url = self._get_url('firm_char')
             if self.url:
                 start_time = time.time()
-                df = self._dl_signal(df_backend, predictor)
+                if self.source == 'hf':
+                    df = self._dl_signal_hf(df_backend, predictor)
+                else:
+                    df = self._dl_signal(df_backend, predictor)
                 end_time = time.time()
                 time_used = end_time - start_time
                 self._print_time(time_used)
@@ -342,7 +441,14 @@ class OpenAP:
     def dl_signal(self, df_backend, predictor, signed=False):
         if df_backend in ['polars', 'pandas']:
             start_time = time.time()
-            df = self._dl_individual_signal(df_backend, predictor, signed)
+            if self.source == 'hf':
+                # Unsigned and signed versions are separate wide files
+                data_name = 'firm_char' if signed else 'firm_char_unsigned'
+                self.url = self._get_url(data_name)
+                df = self._dl_signal_hf(
+                    df_backend, predictor, signed, crsp3_join='full')
+            else:
+                df = self._dl_individual_signal(df_backend, predictor, signed)
             end_time = time.time()
             time_used = end_time - start_time
             self._print_time(time_used)

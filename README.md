@@ -76,6 +76,23 @@ openap = oap.OpenAP()
 openap = oap.OpenAP(202408)
 ```
 
+### Releases on Hugging Face (2026.10 and later)
+Starting with 2026.10, data is hosted on Hugging Face
+([OpenSourceAP/CrossSection](https://huggingface.co/datasets/OpenSourceAP/CrossSection)).
+Earlier releases still download from Google Drive, and the functions below
+work the same way for both.
+```python
+# 2026.10 test release (mixed-vintage data, for testing only)
+openap = oap.OpenAP(202610)
+
+# Or point at any branch of the dataset repo directly
+openap = oap.OpenAP(hf_revision='Test-Data-2026.10')
+```
+Hugging Face releases add more portfolio sets (holding periods, FF93-style,
+VW-forced, placebos, and daily portfolios); run `openap.list_port()` to see
+their download names. Only the requested columns and predictors are
+downloaded, so `dl_signal` and `dl_port(..., predictor=[...])` are fast.
+
 ### List available portfolios (various implementations)
 You will see original portfolio names of Chen and Zimmermann and the corresponding download names.
 ```python
