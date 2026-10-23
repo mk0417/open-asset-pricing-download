@@ -1,3 +1,10 @@
+"""Download published OpenAP data and compute three CRSP characteristics.
+
+Usage: import OpenAP from openassetpricing and call its dl_* methods.
+Inputs: published release files and, for Price/Size/STreversal, WRDS CRSP CIZ.
+Outputs: pandas or Polars dataframes.
+"""
+
 from . import urls
 from .gdrive_parse import _get_name_id_map, _get_readable_link
 from .hf_parse import _get_hf_name_id_map
@@ -170,10 +177,15 @@ class OpenAP:
     def _dl_signal_crsp3(self):
         conn = wrds.Connection()
 
+        # CIZ replaces the legacy monthly file (last updated through 2024).
+        # Alias its fields so the signal formulas below remain unchanged.
+        # shrout is still in thousands; mthret uses native CIZ compounding
+        # and delisting treatment, so historical STreversal can differ.
         df = conn.raw_sql(
             """
-            select permno, date, prc, ret, shrout
-            from crsp.msf
+            select permno, mthcaldt as date, mthprc as prc,
+                   mthret as ret, shrout
+            from crsp.msf_v2
             """, date_cols=['date']
         )
 

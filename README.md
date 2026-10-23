@@ -152,7 +152,21 @@ df = openap.dl_signal('pandas', ['BM'])
 
 ### Note
 - To download all signals, you need a WRDS account.
+- `Price`, `Size`, and `STreversal` are computed from WRDS `crsp.msf_v2`
+  (CRSP CIZ). The signed formulas remain `-log(abs(price))`,
+  `-log(abs(price) * shrout / 1000)`, and `-return`, respectively; missing
+  returns remain zero and nonfinite size remains missing. `dl_signal` defaults
+  to unsigned values; `dl_all_signals` returns signed values. CIZ monthly
+  returns use different dividend reinvestment and delisting conventions, so
+  historical `STreversal` values can differ from the legacy `crsp.msf` data.
+  Revised prices, shares, and coverage can also change `Price` and `Size`.
+  See the [WRDS transition guide](https://wrds-www.wharton.upenn.edu/documents/2084/Webinar.pdf).
+  These three signals use the WRDS data available when called, independently
+  of the selected OpenAP release vintage.
 - The code has been tested with *Python 3.10.14*.
+
+Offline CRSP regression checks can be run with
+`python3 -m unittest discover -s tests -p test_crsp_signals.py -v`.
 
 ### Contacts
 - Peng Li (pl750@bath.ac.uk)
