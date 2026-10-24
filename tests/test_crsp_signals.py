@@ -83,24 +83,22 @@ class CrspSignalsTest(unittest.TestCase):
         self.factory.assert_called_once_with()
 
     def test_individual_signals_preserve_signing_and_backends(self):
-        for source in ['gdrive', 'hf']:
-            for backend in ['polars', 'pandas']:
-                for signed in [False, True]:
-                    with self.subTest(source=source, backend=backend, signed=signed):
-                        self.openap.source = source
-                        with tempfile.TemporaryDirectory() as tmp:
-                            path = Path(tmp) / 'signals.parquet'
-                            self.expected_signed().select('permno', 'yyyymm').write_parquet(path)
-                            self.openap._get_url = Mock(return_value=str(path))
-                            actual = self.openap.dl_signal(backend, SIGNALS, signed=signed)
-                        expected = self.expected_signed()
-                        if not signed:
-                            expected = expected.with_columns(pl.col(SIGNALS) * -1)
-                        if backend == 'pandas':
-                            self.assertIsInstance(actual, pd.DataFrame)
-                            pd.testing.assert_frame_equal(actual, expected.to_pandas())
-                        else:
-                            assert_frame_equal(actual, expected)
+        for backend in ['polars', 'pandas']:
+            for signed in [False, True]:
+                with self.subTest(backend=backend, signed=signed):
+                    with tempfile.TemporaryDirectory() as tmp:
+                        path = Path(tmp) / 'signals.parquet'
+                        self.expected_signed().select('permno', 'yyyymm').write_parquet(path)
+                        self.openap._get_url = Mock(return_value=str(path))
+                        actual = self.openap.dl_signal(backend, SIGNALS, signed=signed)
+                    expected = self.expected_signed()
+                    if not signed:
+                        expected = expected.with_columns(pl.col(SIGNALS) * -1)
+                    if backend == 'pandas':
+                        self.assertIsInstance(actual, pd.DataFrame)
+                        pd.testing.assert_frame_equal(actual, expected.to_pandas())
+                    else:
+                        assert_frame_equal(actual, expected)
 
 
 if __name__ == '__main__':

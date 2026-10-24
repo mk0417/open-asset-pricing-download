@@ -20,8 +20,7 @@ setup(
         'requests',
         'tabulate',
         'wrds',
-        'pyarrow',
-        'beautifulsoup4'
+        'pyarrow'
     ],
     extras_require={
         'examples': [

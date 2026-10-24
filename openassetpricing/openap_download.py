@@ -1,18 +1,13 @@
 """Download published OpenAP data and compute three CRSP characteristics.
 
 Usage: import OpenAP from openassetpricing and call its dl_* methods.
-Inputs: published release files and, for Price/Size/STreversal, WRDS CRSP CIZ.
+Inputs: release files on Hugging Face and, for Price/Size/STreversal, WRDS CRSP CIZ.
 Outputs: pandas or Polars dataframes.
 """
 
 from . import urls
-from .gdrive_parse import _get_name_id_map, _get_readable_link
 from .hf_parse import _get_hf_name_id_map
 import polars as pl
-import pandas as pd
-import requests
-from io import BytesIO
-from zipfile import ZipFile
 from tabulate import tabulate
 import wrds
 import re
@@ -20,20 +15,18 @@ import time
 
 
 def list_release():
-    source_names = {'url': 'Google Drive', 'hf': 'Hugging Face'}
     df = (
         pl.DataFrame(
-            [re.findall(r'^release(\d+)_(url|hf)$', i)[0]
-             for i in dir(urls) if re.match(r'^release\d+_(url|hf)$', i)],
-            schema=['release', 'source'], orient='row')
+            [(int(re.findall(r'^release(\d+)_hf$', i)[0]), getattr(urls, i))
+             for i in dir(urls) if re.match(r'^release\d+_hf$', i)],
+            schema=['release', 'branch'], orient='row')
         .with_columns(
-            pl.col('source').replace_strict(source_names),
-            default=pl.when(pl.col('release')==str(urls.default_release))
+            default=pl.when(pl.col('release')==urls.default_release)
             .then(pl.lit('*')).otherwise(pl.lit('')))
         .sort('release')
     )
     table = [i for i in df.iter_rows()]
-    headers = ['Release', 'Source', 'Default']
+    headers = ['Release', 'Hugging Face branch', 'Default']
     print(tabulate(table, headers, tablefmt='simple_outline'))
 
 class OpenAP:
@@ -42,39 +35,34 @@ class OpenAP:
         # e.g. to try a new release before the package is updated
         if not release_year:
             release_year = urls.default_release
+        release_year = urls.release_aliases.get(int(release_year), release_year)
         self.release_year = release_year
         self.hf_revision = (
             hf_revision or getattr(urls, f'release{release_year}_hf', None))
-        self.source = 'hf' if self.hf_revision else 'gdrive'
+        if not self.hf_revision:
+            raise ValueError(
+                f'Release {release_year} is not available. '
+                'Run list_release() to see available releases.')
+        self.source = 'hf'
 
-        if self.source == 'hf':
-            self.name_id_map = _get_hf_name_id_map(
-                urls.hf_url_prefix, self.hf_revision)
-            self.individual_signal_id_map = None
-        else:
-            release_url = getattr(urls, f'release{release_year}_url', None)
-            if not release_url:
-                raise ValueError(
-                    f'Release {release_year} is not available. '
-                    'Run list_release() to see available releases.')
-            self.name_id_map, self.individual_signal_id_map = (
-                _get_name_id_map(release_url))
+        self.name_id_map = _get_hf_name_id_map(
+            urls.hf_url_prefix, urls.hf_api_prefix, self.hf_revision)
 
-        self.signal_sign = (
-            pl.read_csv(
-                self._get_url('signal_doc'), infer_schema_length=300,
-                columns=['Acronym', 'Sign'], null_values='NA')
-            .rename({'Acronym': 'signal', 'Sign': 'sign'})
-            .with_columns(pl.col('sign').cast(pl.Int8))
-        )
+        # Releases before 2022.03 have no SignalDoc.csv
+        self.signal_sign = None
+        if 'signal_doc' in self.name_id_map['download_name']:
+            self.signal_sign = (
+                pl.read_csv(
+                    self._get_url('signal_doc'), infer_schema_length=300,
+                    columns=['Acronym', 'Sign'], null_values='NA')
+                .rename({'Acronym': 'signal', 'Sign': 'sign'})
+                .with_columns(pl.col('sign').cast(pl.Int8))
+            )
 
     def list_port(self):
-        if self.source == 'hf':
-            port_filter = pl.col('full_name').str.contains('Portfolios/')
-        else:
-            port_filter = pl.col('name').str.starts_with('Predictor')
         df = (
-            self.name_id_map.filter(port_filter)
+            self.name_id_map
+            .filter(pl.col('full_name').str.contains('Portfolios/'))
             .select('name', 'download_name')
         )
         table = [i for i in df.iter_rows()]
@@ -83,96 +71,19 @@ class OpenAP:
 
     def _get_url(self, data_name):
         data_header = self.name_id_map.filter(pl.col('download_name')==data_name)
-        file_with_confirm = ['firm_char', 'deciles_ew', 'deciles_vw']
-        if self.source == 'gdrive' and data_name in file_with_confirm:
-            self.url = _get_readable_link(data_header[0, 'file_id'])
-        else:
-            self.url = data_header[0, 'file_id']
-
-        return self.url
-
-    def _get_individual_signal_url(self, signal_name):
-        data_header = self.individual_signal_id_map.filter(pl.col('signal')==signal_name)
+        if data_header.is_empty():
+            raise ValueError(
+                f'Dataset {data_name!r} is not available in release '
+                f'{self.hf_revision}. Run list_port() to see available '
+                'portfolios.')
         self.url = data_header[0, 'file_id']
         return self.url
-
-    def _zip_source(self, url):
-        # Reading in chunks is 20% faster for large single file
-        chunk_size = 1024 * 1024 * 10
-        source = requests.get(url, stream=True)
-        io_data = BytesIO()
-        for chunk in source.iter_content(chunk_size=chunk_size):
-            if chunk:
-                io_data.write(chunk)
-
-        io_data.seek(0)
-        zip_file = ZipFile(io_data)
-        return zip_file
 
     def _convert_to_backend(self, df, df_backend):
         if df_backend == 'polars':
             return df
         if df_backend == 'pandas':
             return df.to_pandas()
-
-    def _port_indiv(self, df, predictor):
-        n_input = len(predictor)
-        df = df.filter(pl.col('signalname').is_in(predictor))
-        n = df['signalname'].n_unique()
-        if n != n_input:
-            print('One or more input predictors are not available.')
-
-        return df
-
-    def _dl_port_op(self, df_backend, predictor=None):
-        if not predictor:
-            df = (
-                pl.read_csv(
-                    self.url, null_values='NA',
-                    schema_overrides={'port': pl.String})
-                .with_columns(pl.col('date').str.to_date('%Y-%m-%d'))
-            )
-
-        if predictor:
-            if type(predictor) is list:
-                df = (
-                    pl.read_csv(
-                        self.url, null_values='NA',
-                        schema_overrides={'port': pl.String})
-                    .with_columns(pl.col('date').str.to_date('%Y-%m-%d'))
-                )
-                df = self._port_indiv(df, predictor)
-            else:
-                print('Predictor must be a list')
-
-        df = df.sort('signalname', 'port', 'date')
-        return self._convert_to_backend(df, df_backend)
-
-    def _dl_port_alt(self, df_backend, predictor=None):
-        if not predictor:
-            zip_file = self._zip_source(self.url)
-            df = (
-                pl.read_csv(
-                    zip_file.read(zip_file.filelist[0]), null_values='NA',
-                    schema_overrides={'port': pl.String})
-                .with_columns(pl.col('date').str.to_date('%Y-%m-%d'))
-            )
-
-        if predictor:
-            if type(predictor) is list:
-                zip_file = self._zip_source(self.url)
-                df = (
-                    pl.read_csv(
-                        zip_file.read(zip_file.filelist[0]), null_values='NA',
-                        schema_overrides={'port': pl.String})
-                    .with_columns(pl.col('date').str.to_date('%Y-%m-%d'))
-                )
-                df = self._port_indiv(df, predictor)
-            else:
-                print('Predictor must be a list')
-
-        df = df.sort('signalname', 'port', 'date')
-        return self._convert_to_backend(df, df_backend)
 
     def _dl_signal_crsp3(self):
         conn = wrds.Connection()
@@ -209,126 +120,6 @@ class OpenAP:
             )
         )
         return df
-
-    def _dl_signal(self, df_backend, predictor=None):
-        if not predictor:
-            temp = self._dl_signal_crsp3()
-            zip_file = self._zip_source(self.url)
-            df = (
-                pl.read_csv(
-                    zip_file.read(zip_file.filelist[0]), infer_schema_length=0)
-                .with_columns(
-                    pl.col('permno', 'yyyymm').cast(pl.Int32),
-                    pl.exclude('permno', 'yyyymm').cast(pl.Float64))
-                .join(temp, how='left', on=['permno', 'yyyymm'])
-            )
-
-        if predictor:
-            crsp3 = {'Price', 'Size', 'STreversal'}
-            ex_crsp3 = [i for i in predictor if i not in crsp3]
-            if type(predictor) is list:
-                try:
-                    if crsp3 & set(predictor):
-                        temp = self._dl_signal_crsp3()
-
-                    if len(ex_crsp3) > 0:
-                        zip_file = self._zip_source(self.url)
-                        df = (
-                            pl.from_pandas(
-                                pd.read_csv(
-                                    zip_file.open(zip_file.filelist[0]),
-                                    usecols=['permno', 'yyyymm']+ex_crsp3,
-                                    engine='pyarrow')
-                            )
-                            .with_columns(
-                                pl.col('permno', 'yyyymm').cast(pl.Int32))
-                        )
-                        if len(ex_crsp3) < len(predictor):
-                            df = df.join(
-                                temp, how='left', on=['permno', 'yyyymm'])
-                    else:
-                        df = temp
-
-                    df = (
-                        df.select('permno', 'yyyymm', pl.col(predictor))
-                        .filter(
-                            pl.any_horizontal(pl.col(predictor)).is_not_null())
-                        .with_columns(
-                            pl.exclude('permno', 'yyyymm').cast(pl.Float64))
-                        .sort('permno', 'yyyymm')
-                    )
-                except:
-                    print('One or more input predictors are not available.')
-            else:
-                print('Predictor must be a list')
-
-        df = df.sort('permno', 'yyyymm')
-        return self._convert_to_backend(df, df_backend)
-
-    def _dl_individual_signal(self, df_backend, predictor, signed=False):
-        crsp3 = {'Price', 'Size', 'STreversal'}
-        ex_crsp3 = [i for i in predictor if i not in crsp3]
-        if type(predictor) is list:
-            try:
-                if crsp3 & set(predictor):
-                    temp = self._dl_signal_crsp3()
-                    # Price, Size and STreversal from CRSP by default are signed
-                    # If signed = True, do nothing
-                    # If signed = False, multiply -1
-                    if not signed:
-                        temp = temp.with_columns(
-                            pl.col('Price').mul(-1),
-                            pl.col('Size').mul(-1),
-                            pl.col('STreversal').mul(-1))
-
-                if len(ex_crsp3) > 0:
-                    df = pl.DataFrame(
-                        schema={'permno': pl.Int32, 'yyyymm': pl.Int32})
-                    for i in ex_crsp3:
-                        self.url = self._get_individual_signal_url(i)
-                        temp_signal = pl.read_csv(self.url)
-                        if len(temp_signal) > 0:
-                            temp_signal = temp_signal.with_columns(
-                                pl.col('permno', 'yyyymm').cast(pl.Int32))
-                        if len(temp_signal) == 0:
-                            self.url = _get_readable_link(self.url)
-                            temp_signal = (
-                                pl.read_csv(self.url)
-                                .with_columns(
-                                    pl.col('permno', 'yyyymm').cast(pl.Int32))
-                            )
-                        if signed:
-                            _sign = (
-                                self.signal_sign.filter(pl.col('signal')==i)
-                                .get_column('sign')[0])
-                            if _sign is not None:
-                                temp_signal = (
-                                    temp_signal.with_columns(pl.col(i)*_sign))
-
-                        df = df.join(
-                            temp_signal, how='full', on=['permno', 'yyyymm'],
-                            coalesce=True)
-                    if len(ex_crsp3) < len(predictor):
-                        df = df.join(
-                            temp, how='full', on=['permno', 'yyyymm'],
-                            coalesce=True)
-                else:
-                    df = temp
-
-                df = (
-                    df.select('permno', 'yyyymm', pl.col(predictor))
-                    .filter(pl.any_horizontal(pl.col(predictor)).is_not_null())
-                    .with_columns(
-                        pl.exclude('permno', 'yyyymm').cast(pl.Float64))
-                    .sort('permno', 'yyyymm')
-                )
-            except:
-                print('One or more input predictors are not available.')
-        else:
-            print('Predictor must be a list')
-
-        df = df.sort('permno', 'yyyymm')
-        return self._convert_to_backend(df, df_backend)
 
     def _dl_port_hf(self, df_backend, predictor=None):
         # Parquet is filtered before download, so only the requested
@@ -408,59 +199,37 @@ class OpenAP:
         return self._convert_to_backend(df, df_backend)
 
     def dl_port(self, data_name, df_backend, predictor=None):
-        port_alt_list = [
-            'deciles_ew', 'deciles_vw', 'ex_nyse_p20_me', 'nyse', 'ex_price5',
-            'quintiles_ew', 'quintiles_vw']
-
         if df_backend in ['polars', 'pandas']:
             self.url = self._get_url(data_name)
-            if self.url:
-                start_time = time.time()
-                if self.source == 'hf':
-                    df = self._dl_port_hf(df_backend, predictor)
-                elif data_name == 'op':
-                    df = self._dl_port_op(df_backend, predictor)
-                elif data_name in port_alt_list:
-                    df = self._dl_port_alt(df_backend, predictor)
-
-                end_time = time.time()
-                time_used = end_time - start_time
-                self._print_time(time_used)
-                return df
-            else:
-                raise ValueError('Dataset is not available.')
+            start_time = time.time()
+            df = self._dl_port_hf(df_backend, predictor)
+            end_time = time.time()
+            time_used = end_time - start_time
+            self._print_time(time_used)
+            return df
         else:
             raise ValueError("Unsupported backend. Choose 'polars' or 'pandas'.")
 
     def dl_all_signals(self, df_backend, predictor=None):
         if df_backend in ['polars', 'pandas']:
             self.url = self._get_url('firm_char')
-            if self.url:
-                start_time = time.time()
-                if self.source == 'hf':
-                    df = self._dl_signal_hf(df_backend, predictor)
-                else:
-                    df = self._dl_signal(df_backend, predictor)
-                end_time = time.time()
-                time_used = end_time - start_time
-                self._print_time(time_used)
-                return df
-            else:
-                raise ValueError('Dataset is not available.')
+            start_time = time.time()
+            df = self._dl_signal_hf(df_backend, predictor)
+            end_time = time.time()
+            time_used = end_time - start_time
+            self._print_time(time_used)
+            return df
         else:
             raise ValueError("Unsupported backend. Choose 'polars' or 'pandas'.")
 
     def dl_signal(self, df_backend, predictor, signed=False):
         if df_backend in ['polars', 'pandas']:
             start_time = time.time()
-            if self.source == 'hf':
-                # Unsigned and signed versions are separate wide files
-                data_name = 'firm_char' if signed else 'firm_char_unsigned'
-                self.url = self._get_url(data_name)
-                df = self._dl_signal_hf(
-                    df_backend, predictor, signed, crsp3_join='full')
-            else:
-                df = self._dl_individual_signal(df_backend, predictor, signed)
+            # Unsigned and signed versions are separate wide files
+            data_name = 'firm_char' if signed else 'firm_char_unsigned'
+            self.url = self._get_url(data_name)
+            df = self._dl_signal_hf(
+                df_backend, predictor, signed, crsp3_join='full')
             end_time = time.time()
             time_used = end_time - start_time
             self._print_time(time_used)

@@ -4,36 +4,43 @@
 default_release = 202510
 
 # ==========
-# Hugging Face releases (2026.10 and later)
-# release<yyyymm>_hf is the branch (revision) of the dataset repo below
+# All releases are on Hugging Face, one branch (revision) per release
+# release<yyyymm>_hf is the branch of the dataset repo below
 # ==========
 hf_repo_id = 'OpenSourceAP/CrossSection'
 hf_url_prefix = f'https://huggingface.co/datasets/{hf_repo_id}/resolve'
+hf_api_prefix = f'https://huggingface.co/api/datasets/{hf_repo_id}'
 
 # Version 3.00 test release: mixed-vintage data, not for research use.
 # When the real release ships, point this at its branch.
 release202610_hf = 'Test-Data-2026.10'
 
-# ==========
-# Google Drive releases (2025.10 and earlier)
-# ==========
-
 # Version 2.00: data release - 2025.10
-release202510_url = (
-    'https://drive.google.com/drive/folders/1qQDuTsnyvWfEJR6nPBQZ8xxlq6bkLG_y')
+release202510_hf = '2025.10'
 
 # Version 1.41: data release - 2024.10
-release202410_url = (
-    'https://drive.google.com/drive/folders/1SSoHGbwgyhRwUCzLE0YWvUlS0DjLCd4k')
+release202410_hf = '2024.10'
 
 # Version 1.40: data release - 2024.08
-release202408_url = (
-    'https://drive.google.com/drive/folders/1-PqsR-tOjv3-U9DRHw85X-VznYlu-Sfc')
+release202408_hf = '2024.08'
 
 # Version 1.30: data release - 2023.08
-release2023_url = (
-    'https://drive.google.com/drive/folders/1EP6oEabyZRamveGNyzYU0u6qJ-N43Qfq')
+release202308_hf = '2023.08'
+
+# Data release - 2022.04
+release202204_hf = '2022.04'
 
 # Version 1.20: data release - 2022.03
-release2022_url = (
-    'https://drive.google.com/drive/folders/1O18scg9iBTiBaDiQFhoGxdn4FdsbMqGo')
+release202203_hf = '2022.03'
+
+# Data release - 2021.04
+release202104_hf = '2021.04'
+
+# Data release - 2021.03 (only op, placebo_op and firm characteristics)
+release202103_hf = '2021.03'
+
+# Releases 2020.05 and 2020.07 are on Hugging Face too, but in an older
+# format this package does not read
+
+# Older release names, kept so OpenAP(2023) and OpenAP(2022) still work
+release_aliases = {2023: 202308, 2022: 202203}
