@@ -50,7 +50,7 @@ assert oap.OpenAP(202104).signal_sign is None
 
 # ===== Default release, full checks =====
 openap = oap.OpenAP()
-assert openap.hf_revision == '2025.10'
+assert openap.hf_revision == 'Data-Release-2026.10'
 openap.list_port()
 
 doc = openap.dl_signal_doc('polars')
@@ -73,8 +73,8 @@ u = openap.dl_signal('polars', ['BM', neg])
 s = openap.dl_signal('polars', ['BM', neg], signed=True)
 a = openap.dl_all_signals('polars', ['BM', neg])
 assert u.columns == ['permno', 'yyyymm', 'BM', neg]
-# 2025.10's signed and unsigned files were written separately and differ
-# by float rounding (~1e-14), so compare with a tolerance
+# Some releases' signed and unsigned files were written separately and
+# differ by float rounding (~1e-14), so compare with a tolerance
 assert_series_equal(u['BM'], s['BM'], check_exact=False)
 assert_series_equal(u[neg], -s[neg], check_exact=False, check_names=False)
 assert s.equals(a)
