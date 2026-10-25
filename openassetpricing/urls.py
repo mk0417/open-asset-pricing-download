@@ -1,7 +1,7 @@
 # Data is from Chen and Zimmermann: https://www.openassetpricing.com/
 
 # Release used by OpenAP() when no release is given
-default_release = 202510
+default_release = 202610
 
 # ==========
 # All releases are on Hugging Face, one branch (revision) per release
@@ -11,9 +11,10 @@ hf_repo_id = 'OpenSourceAP/CrossSection'
 hf_url_prefix = f'https://huggingface.co/datasets/{hf_repo_id}/resolve'
 hf_api_prefix = f'https://huggingface.co/api/datasets/{hf_repo_id}'
 
-# Version 3.00 test release: mixed-vintage data, not for research use.
-# When the real release ships, point this at its branch.
-release202610_hf = 'Test-Data-2026.10'
+# Version 3.00: data release - 2026.10
+# (branch Test-Data-2026.10 has mixed-vintage test data, not for research use;
+# reach it with OpenAP(hf_revision='Test-Data-2026.10'))
+release202610_hf = 'Data-Release-2026.10'
 
 # Version 2.00: data release - 2025.10
 release202510_hf = '2025.10'

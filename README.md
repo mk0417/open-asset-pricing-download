@@ -79,17 +79,14 @@ openap = oap.OpenAP(202408)
 ### Data source: Hugging Face
 All releases download from Hugging Face
 ([OpenSourceAP/CrossSection](https://huggingface.co/datasets/OpenSourceAP/CrossSection)),
-one dataset branch per release: 2021.03 through 2025.10, plus the 2026.10
-test release. Earlier versions of this package downloaded from Google Drive.
+one dataset branch per release: 2021.03 through 2026.10 (the default).
+Earlier versions of this package downloaded from Google Drive.
 ```python
 # Releases are named yyyymm; the older names 2023 and 2022 still work
 openap = oap.OpenAP(202308)
 
-# 2026.10 test release (mixed-vintage data, for testing only)
-openap = oap.OpenAP(202610)
-
 # Or point at any branch of the dataset repo directly
-openap = oap.OpenAP(hf_revision='Test-Data-2026.10')
+openap = oap.OpenAP(hf_revision='Data-Release-2026.10')
 ```
 Besides the portfolio sets above, releases include holding-period,
 FF93-style, VW-forced, placebo, and daily portfolios. Older releases have
