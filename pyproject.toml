@@ -28,8 +28,7 @@ dependencies = [
 "requests",
 "tabulate",
 "wrds",
-"pyarrow",
-"beautifulsoup4"
+"pyarrow"
 ]
 
 [project.optional-dependencies]
@@ -43,3 +42,5 @@ examples = [
 
 [tool.setuptools.packages.find]
 where = ["."]
+# Without this, tests/, examples/ and build/ are packaged as top-level modules
+include = ["openassetpricing*"]

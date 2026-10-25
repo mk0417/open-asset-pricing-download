@@ -76,22 +76,29 @@ openap = oap.OpenAP()
 openap = oap.OpenAP(202408)
 ```
 
-### Releases on Hugging Face (2026.10 and later)
-Starting with 2026.10, data is hosted on Hugging Face
-([OpenSourceAP/CrossSection](https://huggingface.co/datasets/OpenSourceAP/CrossSection)).
-Earlier releases still download from Google Drive, and the functions below
-work the same way for both.
+### Data source: Hugging Face
+All releases download from Hugging Face
+([OpenSourceAP/CrossSection](https://huggingface.co/datasets/OpenSourceAP/CrossSection)),
+one dataset branch per release: 2021.03 through 2025.10, plus the 2026.10
+test release. Earlier versions of this package downloaded from Google Drive.
 ```python
+# Releases are named yyyymm; the older names 2023 and 2022 still work
+openap = oap.OpenAP(202308)
+
 # 2026.10 test release (mixed-vintage data, for testing only)
 openap = oap.OpenAP(202610)
 
 # Or point at any branch of the dataset repo directly
 openap = oap.OpenAP(hf_revision='Test-Data-2026.10')
 ```
-Hugging Face releases add more portfolio sets (holding periods, FF93-style,
-VW-forced, placebos, and daily portfolios); run `openap.list_port()` to see
-their download names. Only the requested columns and predictors are
-downloaded, so `dl_signal` and `dl_port(..., predictor=[...])` are fast.
+Besides the portfolio sets above, releases include holding-period,
+FF93-style, VW-forced, placebo, and daily portfolios. Older releases have
+fewer files (no daily portfolios before 2021.04 or in 2022.04; 2021.03 has
+only `op`, `placebo_op`, and firm characteristics), so run
+`openap.list_port()` to see what a release has. Only the requested columns
+and predictors are downloaded, so `dl_signal` and
+`dl_port(..., predictor=[...])` are fast. The 2020.05 and 2020.07 releases
+are on Hugging Face in an older format that this package does not read.
 
 ### List available portfolios (various implementations)
 You will see original portfolio names of Chen and Zimmermann and the corresponding download names.
