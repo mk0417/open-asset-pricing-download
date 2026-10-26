@@ -9,7 +9,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='openassetpricing',
-    version='0.0.2',
+    version='0.1.0',
     author='Peng Li, Andrew Chen, Tom Zimmermann',
     author_email='pl750@bath.ac.uk, andrew.y.chen@frb.gov, tom.zimmermann@uni-koeln.de',
     license='GPLv2',
