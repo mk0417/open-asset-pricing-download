@@ -11,7 +11,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openassetpricing"
-version = "0.0.2"
+version = "0.1.0"
 authors = [
 { name = "Peng Li", email = "pl750@bath.ac.uk" },
 { name = "Andrew Chen", email = "andrew.y.chen@frb.gov" },
